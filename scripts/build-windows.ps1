@@ -64,6 +64,21 @@ $onWindows = ($env:OS -like "*Windows*") -or $IsWindows
 if (-not $onWindows) { throw "build-windows.ps1 only runs on Windows" }
 
 $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
+# depot_tools reads %USERPROFILE%\.gitconfig; Actions images may not have one.
+# Uncommitted third_party dirt is usually CRLF from the default autocrlf.
+$gitconfig = Join-Path $env:USERPROFILE ".gitconfig"
+if (-not (Test-Path $gitconfig)) {
+    @"
+[core]
+	autocrlf = false
+	filemode = false
+[depot-tools]
+	allowGlobalGitConfig = false
+"@ | Set-Content -Path $gitconfig -Encoding Ascii
+}
+git config --global core.autocrlf false
+git config --global core.filemode false
+git config --global depot-tools.allowGlobalGitConfig false
 $retryMax = if ($env:RETRY_MAX) { [int]$env:RETRY_MAX } else { [int]$RETRY_MAX }
 
 function Invoke-Retry {
@@ -114,7 +129,12 @@ if (-not $SkipFetch) {
             if ($LASTEXITCODE -ne 0) { return }
             git checkout -B m140-7339 $WEBRTC_BRANCH
             if ($LASTEXITCODE -ne 0) { return }
-            gclient sync -D --no-history
+            $tp = Join-Path $src "third_party"
+            if (Test-Path (Join-Path $tp ".git")) {
+                git -C $tp reset --hard HEAD
+                git -C $tp clean -ffd
+            }
+            gclient sync -D --reset --force --no-history
         } finally { Pop-Location }
     }
 }

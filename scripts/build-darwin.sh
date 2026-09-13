@@ -170,6 +170,37 @@ fi
 COMMIT="$(git -C "$SRC" rev-parse HEAD)"
 DEST="$(plan "$DEST" --commit "$COMMIT" --include-path "$SRC")"
 
+# depot_tools' gn is a wrapper; gn.py requires a second real `gn` on PATH
+# (CIPD binary under src/buildtools/mac).
+ensure_gn() {
+  local bin="" cand
+  for cand in \
+    "$SRC/buildtools/mac/gn" \
+    "$SRC/third_party/gn/gn" \
+    "$SRC/buildtools/mac/clang_x64/gn"; do
+    if [[ -x "$cand" ]]; then
+      bin="$cand"
+      break
+    fi
+  done
+  if [[ -z "$bin" ]]; then
+    bin="$(find "$SRC/buildtools" "$SRC/third_party" "$DEPOT" \
+      -type f -name gn ! -path '*/depot_tools/gn' 2>/dev/null | head -n 1 || true)"
+  fi
+  if [[ -z "$bin" || ! -x "$bin" ]]; then
+    echo "error: real gn binary not found (depot_tools wrapper alone is not enough)" >&2
+    echo "PATH=$PATH" >&2
+    ls -la "$SRC/buildtools/mac" 2>/dev/null || true
+    return 1
+  fi
+  export PATH="$(dirname "$bin"):$DEPOT:$PATH"
+  hash -r || true
+  echo "using gn $bin"
+  gn --version
+}
+
+ensure_gn
+
 GN_OUT="$SRC/out/$TRIPLE"
 mkdir -p "$GN_OUT"
 cp "$DEST/args.gn" "$GN_OUT/args.gn"
