@@ -57,6 +57,7 @@ jobs:
         env:
           NINJA_JOBS: "4"
           DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
+          WEBRTC_CHECKOUT: "C:\\w"
         run: .\scripts\build-windows.ps1 -Triple ${{ matrix.triple }}
       - name: pack
         if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}

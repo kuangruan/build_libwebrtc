@@ -204,7 +204,12 @@ ensure_gn
 GN_OUT="$SRC/out/$TRIPLE"
 mkdir -p "$GN_OUT"
 cp "$DEST/args.gn" "$GN_OUT/args.gn"
-gn gen "$GN_OUT" --args="$(tr '\n' ' ' < "$DEST/args.gn")"
+if [[ ! -f "$SRC/.gn" ]]; then
+  echo "error: missing $SRC/.gn (gclient sync incomplete)" >&2
+  exit 1
+fi
+# Real gn walks cwd for .gn. Actions cwd is this repo, not the WebRTC tree.
+gn --root="$SRC" gen "$GN_OUT" --args="$(tr '\n' ' ' < "$DEST/args.gn")"
 
 if [[ -n "${NINJA_JOBS:-}" ]]; then
   ninja -C "$GN_OUT" -j "$NINJA_JOBS" webrtc

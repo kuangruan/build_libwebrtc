@@ -64,6 +64,18 @@ $onWindows = ($env:OS -like "*Windows*") -or $IsWindows
 if (-not $onWindows) { throw "build-windows.ps1 only runs on Windows" }
 
 $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
+# depot_tools often sets GIT_CONFIG_NOSYSTEM and ignores user gitconfig.
+# GIT_CONFIG_* env still applies to child `git reset` in third_party.
+function Add-GitConfigEnv([string]$Key, [string]$Value) {
+    $n = 0
+    if ($env:GIT_CONFIG_COUNT) { $n = [int]$env:GIT_CONFIG_COUNT }
+    Set-Item -Path "env:GIT_CONFIG_KEY_$n" -Value $Key
+    Set-Item -Path "env:GIT_CONFIG_VALUE_$n" -Value $Value
+    $env:GIT_CONFIG_COUNT = "$($n + 1)"
+}
+Add-GitConfigEnv "core.longpaths" "true"
+Add-GitConfigEnv "core.autocrlf" "false"
+Add-GitConfigEnv "core.filemode" "false"
 # depot_tools reads %USERPROFILE%\.gitconfig; Actions images may not have one.
 # Uncommitted third_party dirt is usually CRLF from the default autocrlf.
 $gitconfig = Join-Path $env:USERPROFILE ".gitconfig"
@@ -72,13 +84,19 @@ if (-not (Test-Path $gitconfig)) {
 [core]
 	autocrlf = false
 	filemode = false
+	longpaths = true
 [depot-tools]
 	allowGlobalGitConfig = false
 "@ | Set-Content -Path $gitconfig -Encoding Ascii
 }
 git config --global core.autocrlf false
 git config --global core.filemode false
+git config --global core.longpaths true
 git config --global depot-tools.allowGlobalGitConfig false
+try { git config --system core.longpaths true } catch { }
+try {
+    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -Type DWord -Force
+} catch { }
 $retryMax = if ($env:RETRY_MAX) { [int]$env:RETRY_MAX } else { [int]$RETRY_MAX }
 
 function Invoke-Retry {
@@ -95,7 +113,10 @@ function Invoke-Retry {
 }
 
 $cache = Get-CacheRoot
-if (-not $Checkout) { $Checkout = Join-Path $cache "checkout" }
+if (-not $Checkout) {
+    # LOCALAPPDATA\build_libwebrtc\checkout\src\third_party\blink\web_tests\... > MAX_PATH.
+    if ($env:GITHUB_ACTIONS) { $Checkout = "C:\w" } else { $Checkout = Join-Path $cache "checkout" }
+}
 $src = Join-Path $Checkout "src"
 $depot = if ($env:DEPOT_TOOLS_DIR) { $env:DEPOT_TOOLS_DIR } else { Join-Path $cache "depot_tools" }
 
@@ -131,8 +152,13 @@ if (-not $SkipFetch) {
             if ($LASTEXITCODE -ne 0) { return }
             $tp = Join-Path $src "third_party"
             if (Test-Path (Join-Path $tp ".git")) {
-                git -C $tp reset --hard HEAD
-                git -C $tp clean -ffd
+                git -c core.longpaths=true -C $tp reset --hard HEAD
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Output "third_party reset failed (long path); wiping $tp"
+                    Remove-Item -Recurse -Force $tp
+                } else {
+                    git -c core.longpaths=true -C $tp clean -ffd
+                }
             }
             gclient sync -D --reset --force --no-history
         } finally { Pop-Location }
@@ -146,8 +172,12 @@ $destOut = Invoke-Plan @("--commit", $commit, "--include-path", $src)
 $gnOut = Join-Path (Join-Path $src "out") $Triple
 New-Item -ItemType Directory -Force -Path $gnOut | Out-Null
 Copy-Item (Join-Path $destOut "args.gn") (Join-Path $gnOut "args.gn") -Force
+if (-not (Test-Path (Join-Path $src ".gn"))) {
+    throw "missing $src\.gn (gclient sync incomplete)"
+}
 $argsFlat = ((Get-Content (Join-Path $destOut "args.gn")) -join " ")
-gn gen $gnOut --args=$argsFlat
+# Real gn walks cwd for .gn. Actions cwd is this repo, not the WebRTC tree.
+gn --root=$src gen $gnOut --args=$argsFlat
 if ($env:NINJA_JOBS) { ninja -C $gnOut -j $env:NINJA_JOBS webrtc } else { ninja -C $gnOut webrtc }
 
 $lib = $null

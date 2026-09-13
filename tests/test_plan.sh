@@ -42,11 +42,17 @@ body_sh="$(cat "$SH")"
 body_ps="$(cat "$PS1")"
 for body in "$body_sh" "$body_ps"; do
   echo "$body" | grep -q 'fetch --nohooks --no-history webrtc' || fail "missing no-history fetch"
-  echo "$body" | grep -q 'gclient sync -D --no-history' || fail "missing no-history sync"
+  echo "$body" | grep -q 'gclient sync -D' || fail "missing gclient sync -D"
+  echo "$body" | grep -q -- '--no-history' || fail "missing no-history sync"
   echo "$body" | grep -q 'fetch --depth=1' || fail "missing depth=1"
 done
 echo "$body_ps" | grep -q 'windows-x86_64' || fail "ps1 missing x64"
 echo "$body_ps" | grep -q 'windows-x86' || fail "ps1 missing x86"
+echo "$body_sh" | grep -q 'gn --root="$SRC"' || fail "darwin gn must pass --root (Actions cwd has no .gn)"
+echo "$body_ps" | grep -q 'gn --root=$src' || fail "windows gn must pass --root (Actions cwd has no .gn)"
+echo "$body_ps" | grep -q 'core.longpaths' || fail "windows must enable git longpaths"
+echo "$body_ps" | grep -Fq 'C:\w' || fail "windows Actions checkout must be a short path"
+grep -q 'WEBRTC_CHECKOUT' "$WF" || fail "workflow must set a short Windows checkout"
 
 for t in darwin-arm64 darwin-x86_64 windows-x86_64 windows-x86; do
   grep -q "$t" "$WF" || fail "workflow missing $t"
