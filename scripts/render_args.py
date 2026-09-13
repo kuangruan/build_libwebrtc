@@ -71,6 +71,26 @@ def assert_args_ok(text: str) -> None:
             raise SystemExit(f"args.gn missing {flag}")
 
 
+def parse_gn_listed_value(text: str) -> str:
+    """Extract the quoted value from `gn args --list=NAME [--short]`.
+
+    `--short` prints `target_cpu = "arm64"`. Stripping spaces/quotes from that
+    line yields `target_cpu=arm64`, which is not the cpu name.
+    The long listing has `Current value = "arm64"`.
+    """
+    for raw in text.splitlines():
+        line = raw.strip()
+        if '"' not in line:
+            continue
+        if "=" not in line and "Current value" not in line:
+            continue
+        start = line.find('"')
+        end = line.find('"', start + 1)
+        if start >= 0 and end > start:
+            return line[start + 1 : end]
+    return ""
+
+
 def flatten_gn_args(text: str) -> str:
     """Strip comments so `gn --args=` does not treat the rest of the file as a comment."""
     parts: list[str] = []
@@ -108,10 +128,22 @@ def main() -> int:
         metavar="ARGS_GN",
         help="print comment-stripped GN args from an args.gn file",
     )
+    parser.add_argument(
+        "--parse-gn-value",
+        action="store_true",
+        help="read gn --list output on stdin and print the quoted value",
+    )
     args = parser.parse_args()
 
     if args.flatten:
         print(flatten_gn_args(Path(args.flatten).read_text()))
+        return 0
+    if args.parse_gn_value:
+        value = parse_gn_listed_value(sys.stdin.read())
+        if not value:
+            print("error: no quoted gn value on stdin", file=sys.stderr)
+            return 1
+        print(value)
         return 0
 
     triples = load_triples()

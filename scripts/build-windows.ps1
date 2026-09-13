@@ -214,12 +214,13 @@ $gnBin = Ensure-Gn
 # Quote --args so PowerShell does not split target_os="win".
 & $gnBin --root=$src gen $gnOut "--args=$argsFlat"
 if ($LASTEXITCODE -ne 0) { throw "gn gen failed" }
-$gotCpu = (& $gnBin --root=$src args $gnOut --list=target_cpu --short 2>$null)
-if (-not $gotCpu) {
+$gotCpu = (& $gnBin --root=$src args $gnOut --list=target_cpu --short 2>$null | Out-String)
+if ($gotCpu -match '"([^"]+)"') {
+    $gotCpu = $Matches[1]
+} else {
     $listed = & $gnBin --root=$src args $gnOut --list=target_cpu
-    $gotCpu = [regex]::Match(($listed | Out-String), 'Current value[^\n]*"([^"]+)"').Groups[1].Value
+    $gotCpu = [regex]::Match(($listed | Out-String), '"([^"]+)"').Groups[1].Value
 }
-$gotCpu = "$gotCpu".Trim().Trim('"')
 if ($gotCpu -ne $expectCpu) {
     throw "gn target_cpu=$gotCpu want $expectCpu for $Triple"
 }

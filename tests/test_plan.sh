@@ -43,6 +43,19 @@ python3 "$PY" --triple darwin-arm64 --dest "$arm_dest" --script sh --dry-run >/d
 arm_flat="$(python3 "$PY" --flatten "$arm_dest/args.gn")"
 echo "$arm_flat" | grep -q 'target_cpu="arm64"' || fail "flatten dropped arm64"
 
+short_arm='target_cpu = "arm64"'
+parsed="$(printf '%s\n' "$short_arm" | python3 "$PY" --parse-gn-value)"
+[[ "$parsed" == "arm64" ]] || fail "parse --short arm64 got $parsed"
+# The old tr -d ' \"' path turned this into target_cpu=arm64 and failed the check.
+stripped="$(printf '%s\n' "$short_arm" | tr -d ' \"')"
+[[ "$stripped" == "target_cpu=arm64" ]] || fail "fixture for the tr bug drifted: $stripped"
+[[ "$parsed" != "$stripped" ]] || fail "parser must not return the tr-stripped line"
+long_arm=$'target_cpu\n    Current value = "arm64"\n      From //out/darwin-arm64/args.gn:13'
+parsed="$(printf '%s\n' "$long_arm" | python3 "$PY" --parse-gn-value)"
+[[ "$parsed" == "arm64" ]] || fail "parse long listing arm64 got $parsed"
+parsed="$(printf '%s\n' 'target_cpu = "x64"' | python3 "$PY" --parse-gn-value)"
+[[ "$parsed" == "x64" ]] || fail "parse --short x64 got $parsed"
+
 if bash "$SH" --dry-run --triple windows-x86_64 --dest "$TMP/nope" >/dev/null 2>"$TMP/err3"; then
   fail "sh must reject windows"
 fi
@@ -59,6 +72,8 @@ echo "$body_ps" | grep -q 'windows-x86_64' || fail "ps1 missing x64"
 echo "$body_ps" | grep -q 'windows-x86' || fail "ps1 missing x86"
 echo "$body_sh" | grep -q 'gn --root="$SRC"' || fail "darwin gn must pass --root (Actions cwd has no .gn)"
 echo "$body_sh" | grep -q -- '--flatten' || fail "darwin must flatten args.gn (leading # swallows target_cpu)"
+echo "$body_sh" | grep -q -- '--parse-gn-value' || fail "darwin must parse gn --short quoted value"
+echo "$body_sh" | grep -q "tr -d ' \\\"'" && fail "darwin must not tr-strip gn --short (leaves target_cpu=arm64)"
 echo "$body_sh" | grep -q 'macos-15-intel' || fail "darwin-x86_64 must refuse Apple Silicon hosts"
 echo "$body_sh" | grep -q 'lipo -info' || fail "darwin must lipo-check the archive arch"
 echo "$body_ps" | grep -q 'Ensure-Gn' || fail "windows must find real gn.exe (depot_tools wrapper is not enough)"

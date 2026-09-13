@@ -238,9 +238,10 @@ fi
 GN_ARGS="$(python3 "$ROOT/scripts/render_args.py" --flatten "$DEST/args.gn")"
 echo "gn --args=$GN_ARGS"
 gn --root="$SRC" gen "$GN_OUT" --args="$GN_ARGS"
-GOT_CPU="$(gn --root="$SRC" args "$GN_OUT" --list=target_cpu --short 2>/dev/null | tr -d ' \"' || true)"
+# gn --short prints `target_cpu = "arm64"`. Take the quoted cpu, not the whole line.
+GOT_CPU="$(gn --root="$SRC" args "$GN_OUT" --list=target_cpu --short 2>/dev/null | python3 "$ROOT/scripts/render_args.py" --parse-gn-value || true)"
 if [[ -z "$GOT_CPU" ]]; then
-  GOT_CPU="$(gn --root="$SRC" args "$GN_OUT" --list=target_cpu | awk -F'"' '/Current value/ {print $2; exit}')"
+  GOT_CPU="$(gn --root="$SRC" args "$GN_OUT" --list=target_cpu | python3 "$ROOT/scripts/render_args.py" --parse-gn-value || true)"
 fi
 if [[ "$GOT_CPU" != "$EXPECT_CPU" ]]; then
   echo "error: gn target_cpu=$GOT_CPU want $EXPECT_CPU for $TRIPLE" >&2
