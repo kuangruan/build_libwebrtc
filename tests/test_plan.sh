@@ -76,6 +76,15 @@ echo "$body_sh" | grep -q -- '--parse-gn-value' || fail "darwin must parse gn --
 echo "$body_sh" | grep -q "tr -d ' \\\"'" && fail "darwin must not tr-strip gn --short (leaves target_cpu=arm64)"
 echo "$body_sh" | grep -q 'macos-15-intel' || fail "darwin-x86_64 must refuse Apple Silicon hosts"
 echo "$body_sh" | grep -q 'lipo -info' || fail "darwin must lipo-check the archive arch"
+echo "$body_sh" | grep -q 'Architectures in the fat file' || fail "darwin fat check must not match Non-fat file"
+thin_info='Non-fat file: /Users/runner/.cache/build_libwebrtc/m140-7339/darwin-arm64/lib/libwebrtc.a is architecture: arm64'
+if echo "$thin_info" | grep -Eiq 'Architectures in the fat file'; then
+  fail "thin lipo -info must not be treated as fat"
+fi
+fat_info='Architectures in the fat file: /tmp/libwebrtc.a are: x86_64 arm64'
+if ! echo "$fat_info" | grep -Eiq 'Architectures in the fat file'; then
+  fail "fat lipo -info must still be rejected"
+fi
 echo "$body_ps" | grep -q 'Ensure-Gn' || fail "windows must find real gn.exe (depot_tools wrapper is not enough)"
 echo "$body_ps" | grep -q -- '--root=$src' || fail "windows gn must pass --root (Actions cwd has no .gn)"
 echo "$body_ps" | grep -q -- '--flatten' || fail "windows must flatten args.gn"

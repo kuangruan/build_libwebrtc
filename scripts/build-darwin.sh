@@ -270,7 +270,9 @@ mkdir -p "$DEST/lib" "$DEST/include"
 cp "$LIB" "$DEST/lib/libwebrtc.a"
 MACHO="$(lipo -info "$DEST/lib/libwebrtc.a" 2>/dev/null || file "$DEST/lib/libwebrtc.a")"
 echo "mach-o $MACHO"
-if echo "$MACHO" | grep -Eiq 'architectures|fat file'; then
+# Thin: "Non-fat file: … is architecture: arm64". That contains "fat file" and
+# used to trip grep 'fat file'. Only a universal archive says this:
+if echo "$MACHO" | grep -Eiq 'Architectures in the fat file'; then
   echo "error: $TRIPLE must be a thin $EXPECT_MACHO archive, not fat" >&2
   exit 1
 fi
