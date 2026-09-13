@@ -75,6 +75,9 @@ echo "$body_sh" | grep -q -- '--flatten' || fail "darwin must flatten args.gn (l
 echo "$body_sh" | grep -q -- '--parse-gn-value' || fail "darwin must parse gn --short quoted value"
 echo "$body_sh" | grep -q "tr -d ' \\\"'" && fail "darwin must not tr-strip gn --short (leaves target_cpu=arm64)"
 echo "$body_sh" | grep -q 'macos-15-intel' || fail "darwin-x86_64 must refuse Apple Silicon hosts"
+echo "$body_sh" | grep -q 'api:field_trials' || fail "darwin must ninja api:field_trials (FieldTrials::Create)"
+echo "$body_sh" | grep -q 'FieldTrials::Create' || fail "darwin must nm-check FieldTrials::Create"
+echo "$body_ps" | grep -q 'api:field_trials' || fail "windows must ninja api:field_trials"
 echo "$body_sh" | grep -q 'lipo -info' || fail "darwin must lipo-check the archive arch"
 echo "$body_sh" | grep -q 'Architectures in the fat file' || fail "darwin fat check must not match Non-fat file"
 thin_info='Non-fat file: /Users/runner/.cache/build_libwebrtc/m140-7339/darwin-arm64/lib/libwebrtc.a is architecture: arm64'

@@ -224,7 +224,7 @@ if ($gotCpu -match '"([^"]+)"') {
 if ($gotCpu -ne $expectCpu) {
     throw "gn target_cpu=$gotCpu want $expectCpu for $Triple"
 }
-if ($env:NINJA_JOBS) { ninja -C $gnOut -j $env:NINJA_JOBS webrtc } else { ninja -C $gnOut webrtc }
+if ($env:NINJA_JOBS) { ninja -C $gnOut -j $env:NINJA_JOBS webrtc api:field_trials } else { ninja -C $gnOut webrtc api:field_trials }
 
 $lib = $null
 foreach ($cand in @("obj\webrtc.lib", "webrtc.lib", "obj\webrtc\webrtc.lib")) {
@@ -232,10 +232,30 @@ foreach ($cand in @("obj\webrtc.lib", "webrtc.lib", "obj\webrtc\webrtc.lib")) {
     if (Test-Path $p) { $lib = $p; break }
 }
 if (-not $lib) { throw "webrtc.lib not found under $gnOut" }
+$ft = $null
+foreach ($cand in @("obj\api\field_trials.obj", "obj\api\field_trials\field_trials.obj", "obj\api\field_trials.lib")) {
+    $p = Join-Path $gnOut $cand
+    if (Test-Path $p) { $ft = $p; break }
+}
+if (-not $ft) {
+    $hit = Get-ChildItem -Path (Join-Path $gnOut "obj\api") -Recurse -Include "field_trials.obj","field_trials.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($hit) { $ft = $hit.FullName }
+}
+if (-not $ft) { throw "api:field_trials output not found under $gnOut" }
 $libDir = Join-Path $destOut "lib"
 $incDir = Join-Path $destOut "include"
 New-Item -ItemType Directory -Force -Path $libDir, $incDir | Out-Null
-Copy-Item $lib (Join-Path $libDir "webrtc.lib") -Force
+$outLib = Join-Path $libDir "webrtc.lib"
+# `webrtc` complete_static_lib does not include embedder-only FieldTrials::Create.
+if (Get-Command lib.exe -ErrorAction SilentlyContinue) {
+    & lib.exe "/OUT:$outLib" $lib $ft
+    if ($LASTEXITCODE -ne 0) { throw "lib.exe failed merging api:field_trials" }
+} elseif (Get-Command llvm-lib -ErrorAction SilentlyContinue) {
+    & llvm-lib "/OUT:$outLib" $lib $ft
+    if ($LASTEXITCODE -ne 0) { throw "llvm-lib failed merging api:field_trials" }
+} else {
+    throw "need lib.exe or llvm-lib to merge api:field_trials into webrtc.lib"
+}
 Get-ChildItem -Path $src -Recurse -Include *.h, *.hpp, *.inc | ForEach-Object {
     $rel = $_.FullName.Substring($src.Length).TrimStart("\", "/")
     if ($rel -like "out\*" -or $rel -like ".git\*") { return }

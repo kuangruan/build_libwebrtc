@@ -250,9 +250,9 @@ if [[ "$GOT_CPU" != "$EXPECT_CPU" ]]; then
 fi
 
 if [[ -n "${NINJA_JOBS:-}" ]]; then
-  ninja -C "$GN_OUT" -j "$NINJA_JOBS" webrtc
+  ninja -C "$GN_OUT" -j "$NINJA_JOBS" webrtc api:field_trials
 else
-  ninja -C "$GN_OUT" webrtc
+  ninja -C "$GN_OUT" webrtc api:field_trials
 fi
 
 LIB=""
@@ -266,8 +266,24 @@ if [[ -z "$LIB" ]]; then
   echo "error: libwebrtc.a not found under $GN_OUT" >&2
   exit 1
 fi
+FT=""
+for cand in obj/api/field_trials.o obj/api/field_trials/field_trials.o obj/api/libfield_trials.a; do
+  if [[ -f "$GN_OUT/$cand" ]]; then
+    FT="$GN_OUT/$cand"
+    break
+  fi
+done
+if [[ -z "$FT" ]]; then
+  FT="$(find "$GN_OUT/obj/api" \( -name 'field_trials.o' -o -name 'libfield_trials.a' \) 2>/dev/null | head -n 1 || true)"
+fi
+if [[ -z "$FT" ]]; then
+  echo "error: api:field_trials output not found under $GN_OUT" >&2
+  exit 1
+fi
 mkdir -p "$DEST/lib" "$DEST/include"
 cp "$LIB" "$DEST/lib/libwebrtc.a"
+# `webrtc` complete_static_lib does not include embedder-only FieldTrials::Create.
+ar r "$DEST/lib/libwebrtc.a" "$FT"
 MACHO="$(lipo -info "$DEST/lib/libwebrtc.a" 2>/dev/null || file "$DEST/lib/libwebrtc.a")"
 echo "mach-o $MACHO"
 # Thin: "Non-fat file: … is architecture: arm64". That contains "fat file" and
@@ -288,6 +304,10 @@ rsync -a --prune-empty-dirs \
 if command -v nm >/dev/null; then
   if nm "$DEST/lib/libwebrtc.a" 2>/dev/null | grep -Eiq 'avcodec_|av_codec'; then
     echo "error: libwebrtc.a exports avcodec_*; rtc_use_h264 must stay false" >&2
+    exit 1
+  fi
+  if ! (nm -C "$DEST/lib/libwebrtc.a" 2>/dev/null || true) | grep -q 'FieldTrials::Create'; then
+    echo "error: libwebrtc.a missing webrtc::FieldTrials::Create; ninja api:field_trials" >&2
     exit 1
   fi
 fi
