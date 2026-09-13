@@ -71,6 +71,16 @@ def assert_args_ok(text: str) -> None:
             raise SystemExit(f"args.gn missing {flag}")
 
 
+def flatten_gn_args(text: str) -> str:
+    """Strip comments so `gn --args=` does not treat the rest of the file as a comment."""
+    parts: list[str] = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if line:
+            parts.append(line)
+    return " ".join(parts)
+
+
 def render_args_gn(triple: dict[str, str]) -> str:
     lines = [
         "# Frozen GN. Do not enable webrtc H.264 / Chromium FFmpeg.",
@@ -93,7 +103,16 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--commit", default="")
     parser.add_argument("--include-path", default="")
+    parser.add_argument(
+        "--flatten",
+        metavar="ARGS_GN",
+        help="print comment-stripped GN args from an args.gn file",
+    )
     args = parser.parse_args()
+
+    if args.flatten:
+        print(flatten_gn_args(Path(args.flatten).read_text()))
+        return 0
 
     triples = load_triples()
     if args.list:

@@ -33,6 +33,15 @@ grep -q 'build-windows.ps1' "$TMP/err2" || fail "windows redirected to ps1"
 
 bash "$SH" --dry-run --triple darwin-x86_64 --dest "$TMP/slice" >/dev/null
 grep -q 'target_cpu="x64"' "$TMP/slice/args.gn" || fail "darwin-x86_64 cpu"
+flat="$(python3 "$PY" --flatten "$TMP/slice/args.gn")"
+echo "$flat" | grep -q '#' && fail "flatten leaked a comment (gn --args would drop target_cpu)"
+echo "$flat" | grep -q 'target_cpu="x64"' || fail "flatten dropped x64"
+echo "$flat" | grep -q 'rtc_use_h264=false' || fail "flatten dropped h264=false"
+
+arm_dest="$TMP/darwin-arm64-flat"
+python3 "$PY" --triple darwin-arm64 --dest "$arm_dest" --script sh --dry-run >/dev/null
+arm_flat="$(python3 "$PY" --flatten "$arm_dest/args.gn")"
+echo "$arm_flat" | grep -q 'target_cpu="arm64"' || fail "flatten dropped arm64"
 
 if bash "$SH" --dry-run --triple windows-x86_64 --dest "$TMP/nope" >/dev/null 2>"$TMP/err3"; then
   fail "sh must reject windows"
@@ -49,13 +58,22 @@ done
 echo "$body_ps" | grep -q 'windows-x86_64' || fail "ps1 missing x64"
 echo "$body_ps" | grep -q 'windows-x86' || fail "ps1 missing x86"
 echo "$body_sh" | grep -q 'gn --root="$SRC"' || fail "darwin gn must pass --root (Actions cwd has no .gn)"
+echo "$body_sh" | grep -q -- '--flatten' || fail "darwin must flatten args.gn (leading # swallows target_cpu)"
+echo "$body_sh" | grep -q 'macos-15-intel' || fail "darwin-x86_64 must refuse Apple Silicon hosts"
+echo "$body_sh" | grep -q 'lipo -info' || fail "darwin must lipo-check the archive arch"
 echo "$body_ps" | grep -q 'Ensure-Gn' || fail "windows must find real gn.exe (depot_tools wrapper is not enough)"
 echo "$body_ps" | grep -q -- '--root=$src' || fail "windows gn must pass --root (Actions cwd has no .gn)"
+echo "$body_ps" | grep -q -- '--flatten' || fail "windows must flatten args.gn"
+echo "$body_ps" | grep -q '"--args=$argsFlat"' || fail "windows must quote gn --args"
 echo "$body_ps" | grep -q 'buildtools\\win\\gn.exe' || fail "windows must look for CIPD gn.exe"
 echo "$body_ps" | grep -q 'core.longpaths' || fail "windows must enable git longpaths"
 echo "$body_ps" | grep -Fq 'C:\w' || fail "windows Actions checkout must be a short path"
 grep -q 'WEBRTC_CHECKOUT' "$WF" || fail "workflow must set a short Windows checkout"
 grep -q 'gh release create' "$WF" || fail "workflow must publish successful slices to Releases"
+grep -q 'macos-15-intel' "$WF" || fail "workflow must run darwin-x86_64 on Intel, not macos-15"
+if awk '/darwin:/{d=1} d && /runs-on: macos-15$/{bad=1} d && /windows:/{d=0} END{exit !bad}' "$WF"; then
+  fail "workflow must not run every Darwin triple on macos-15"
+fi
 
 for t in darwin-arm64 darwin-x86_64 windows-x86_64 windows-x86; do
   grep -q "$t" "$WF" || fail "workflow missing $t"

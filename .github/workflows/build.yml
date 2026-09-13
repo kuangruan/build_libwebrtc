@@ -16,12 +16,16 @@ on:
 jobs:
   darwin:
     if: ${{ inputs.triple == 'all' || startsWith(inputs.triple, 'darwin-') }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        triple: [darwin-arm64, darwin-x86_64]
+        include:
+          - triple: darwin-arm64
+            os: macos-15
+          - triple: darwin-x86_64
+            os: macos-15-intel
     steps:
       - uses: actions/checkout@v4
       - name: build

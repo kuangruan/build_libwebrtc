@@ -92,6 +92,31 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
+HOST_ARCH="$(uname -m)"
+echo "host $HOST_ARCH triple=$TRIPLE"
+case "$TRIPLE" in
+  darwin-arm64)
+    if [[ "$HOST_ARCH" != "arm64" ]]; then
+      echo "error: darwin-arm64 must run on Apple Silicon (got $HOST_ARCH)" >&2
+      exit 1
+    fi
+    EXPECT_MACHO=arm64
+    EXPECT_CPU=arm64
+    ;;
+  darwin-x86_64)
+    if [[ "$HOST_ARCH" != "x86_64" ]]; then
+      echo "error: darwin-x86_64 must run on Intel (got $HOST_ARCH); use macos-15-intel" >&2
+      exit 1
+    fi
+    EXPECT_MACHO=x86_64
+    EXPECT_CPU=x64
+    ;;
+  *)
+    echo "error: unsupported darwin triple $TRIPLE" >&2
+    exit 1
+    ;;
+esac
+
 retry() {
   local n=1 delay=2
   while true; do
@@ -209,7 +234,19 @@ if [[ ! -f "$SRC/.gn" ]]; then
   exit 1
 fi
 # Real gn walks cwd for .gn. Actions cwd is this repo, not the WebRTC tree.
-gn --root="$SRC" gen "$GN_OUT" --args="$(tr '\n' ' ' < "$DEST/args.gn")"
+# Do not flatten args.gn with `tr` — a leading `#` comment would swallow target_cpu.
+GN_ARGS="$(python3 "$ROOT/scripts/render_args.py" --flatten "$DEST/args.gn")"
+echo "gn --args=$GN_ARGS"
+gn --root="$SRC" gen "$GN_OUT" --args="$GN_ARGS"
+GOT_CPU="$(gn --root="$SRC" args "$GN_OUT" --list=target_cpu --short 2>/dev/null | tr -d ' \"' || true)"
+if [[ -z "$GOT_CPU" ]]; then
+  GOT_CPU="$(gn --root="$SRC" args "$GN_OUT" --list=target_cpu | awk -F'"' '/Current value/ {print $2; exit}')"
+fi
+if [[ "$GOT_CPU" != "$EXPECT_CPU" ]]; then
+  echo "error: gn target_cpu=$GOT_CPU want $EXPECT_CPU for $TRIPLE" >&2
+  gn --root="$SRC" args "$GN_OUT" --list=target_cpu || true
+  exit 1
+fi
 
 if [[ -n "${NINJA_JOBS:-}" ]]; then
   ninja -C "$GN_OUT" -j "$NINJA_JOBS" webrtc
@@ -230,6 +267,16 @@ if [[ -z "$LIB" ]]; then
 fi
 mkdir -p "$DEST/lib" "$DEST/include"
 cp "$LIB" "$DEST/lib/libwebrtc.a"
+MACHO="$(lipo -info "$DEST/lib/libwebrtc.a" 2>/dev/null || file "$DEST/lib/libwebrtc.a")"
+echo "mach-o $MACHO"
+if echo "$MACHO" | grep -Eiq 'architectures|fat file'; then
+  echo "error: $TRIPLE must be a thin $EXPECT_MACHO archive, not fat" >&2
+  exit 1
+fi
+if ! echo "$MACHO" | grep -Eq "[[:space:]]$EXPECT_MACHO([[:space:]]|$)"; then
+  echo "error: $DEST/lib/libwebrtc.a is not $EXPECT_MACHO" >&2
+  exit 1
+fi
 rsync -a --prune-empty-dirs \
   --exclude='out/' --exclude='.git/' \
   --include='*/' --include='*.h' --include='*.hpp' --include='*.inc' --exclude='*' \

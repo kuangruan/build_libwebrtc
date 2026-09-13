@@ -175,7 +175,10 @@ Copy-Item (Join-Path $destOut "args.gn") (Join-Path $gnOut "args.gn") -Force
 if (-not (Test-Path (Join-Path $src ".gn"))) {
     throw "missing $src\.gn (gclient sync incomplete)"
 }
-$argsFlat = ((Get-Content (Join-Path $destOut "args.gn")) -join " ")
+$expectCpu = if ($Triple -eq "windows-x86") { "x86" } else { "x64" }
+$argsFlat = & python (Join-Path $Root "scripts\render_args.py") --flatten (Join-Path $destOut "args.gn")
+if ($LASTEXITCODE -ne 0) { throw "flatten args.gn failed" }
+Write-Output "gn --args=$argsFlat"
 # depot_tools' gn is a wrapper; gn.py requires a second real gn.exe on PATH
 # (CIPD binary under src\buildtools\win).
 function Ensure-Gn {
@@ -208,8 +211,18 @@ function Ensure-Gn {
 }
 $gnBin = Ensure-Gn
 # Real gn walks cwd for .gn. Actions cwd is this repo, not the WebRTC tree.
-& $gnBin --root=$src gen $gnOut --args=$argsFlat
+# Quote --args so PowerShell does not split target_os="win".
+& $gnBin --root=$src gen $gnOut "--args=$argsFlat"
 if ($LASTEXITCODE -ne 0) { throw "gn gen failed" }
+$gotCpu = (& $gnBin --root=$src args $gnOut --list=target_cpu --short 2>$null)
+if (-not $gotCpu) {
+    $listed = & $gnBin --root=$src args $gnOut --list=target_cpu
+    $gotCpu = [regex]::Match(($listed | Out-String), 'Current value[^\n]*"([^"]+)"').Groups[1].Value
+}
+$gotCpu = "$gotCpu".Trim().Trim('"')
+if ($gotCpu -ne $expectCpu) {
+    throw "gn target_cpu=$gotCpu want $expectCpu for $Triple"
+}
 if ($env:NINJA_JOBS) { ninja -C $gnOut -j $env:NINJA_JOBS webrtc } else { ninja -C $gnOut webrtc }
 
 $lib = $null
