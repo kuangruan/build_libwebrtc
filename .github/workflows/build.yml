@@ -1,0 +1,73 @@
+name: build
+on:
+  workflow_dispatch:
+    inputs:
+      triple:
+        description: Triple to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - darwin-arm64
+          - darwin-x86_64
+          - windows-x86_64
+          - windows-x86
+jobs:
+  darwin:
+    if: ${{ inputs.triple == 'all' || startsWith(inputs.triple, 'darwin-') }}
+    runs-on: macos-15
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        triple: [darwin-arm64, darwin-x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
+        env:
+          NINJA_JOBS: "4"
+        run: ./scripts/build-darwin.sh --triple ${{ matrix.triple }}
+      - name: pack
+        if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
+        run: |
+          ROOT="${LIBWEBRTC_ROOT:-$HOME/.cache/build_libwebrtc}"
+          SLICE="$ROOT/m140-7339/${{ matrix.triple }}"
+          tar -C "$SLICE" -c include lib args.gn BUILD_INFO.json | zstd -T0 -o "libwebrtc-m140-${{ matrix.triple }}.tar.zst"
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
+        with:
+          name: libwebrtc-m140-${{ matrix.triple }}
+          path: libwebrtc-m140-${{ matrix.triple }}.tar.zst
+          if-no-files-found: error
+
+  windows:
+    if: ${{ inputs.triple == 'all' || startsWith(inputs.triple, 'windows-') }}
+    runs-on: windows-2022
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        triple: [windows-x86_64, windows-x86]
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
+        env:
+          NINJA_JOBS: "4"
+          DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
+        run: .\scripts\build-windows.ps1 -Triple ${{ matrix.triple }}
+      - name: pack
+        if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
+        shell: bash
+        run: |
+          ROOT="${LIBWEBRTC_ROOT:-$LOCALAPPDATA/build_libwebrtc}"
+          SLICE="$ROOT/m140-7339/${{ matrix.triple }}"
+          tar -C "$SLICE" -c include lib args.gn BUILD_INFO.json | zstd -T0 -o "libwebrtc-m140-${{ matrix.triple }}.tar.zst"
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
+        with:
+          name: libwebrtc-m140-${{ matrix.triple }}
+          path: libwebrtc-m140-${{ matrix.triple }}.tar.zst
+          if-no-files-found: error

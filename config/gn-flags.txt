@@ -1,0 +1,13 @@
+# Frozen GN for M140 / branch-heads/7339.
+# Do not enable Chromium FFmpeg / OpenH264.
+is_debug=false
+is_component_build=false
+rtc_include_tests=false
+rtc_build_examples=false
+rtc_build_tools=false
+rtc_use_h264=false
+proprietary_codecs=false
+use_custom_libcxx=false
+use_rtti=true
+treat_warnings_as_errors=false
+is_clang=true

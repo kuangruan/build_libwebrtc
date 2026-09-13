@@ -1,0 +1,15 @@
+.DS_Store
+.cache/
+checkout/
+depot_tools/
+dist/
+out/
+*.a
+*.lib
+*.pdb
+*.tar
+*.tar.gz
+*.tar.zst
+*.zip
+__pycache__/
+*.pyc

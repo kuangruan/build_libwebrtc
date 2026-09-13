@@ -1,0 +1,5 @@
+# name            host-os   gn-os  gn-cpu  lib-name
+darwin-arm64      darwin    mac    arm64   libwebrtc.a
+darwin-x86_64     darwin    mac    x64     libwebrtc.a
+windows-x86_64    windows   win    x64     webrtc.lib
+windows-x86       windows   win    x86     webrtc.lib
