@@ -75,7 +75,7 @@ jobs:
 
   release:
     needs: [darwin, windows]
-    if: ${{ !cancelled() && (needs.darwin.result == 'success' || needs.windows.result == 'success') }}
+    if: ${{ always() && !cancelled() && (needs.darwin.result == 'success' || needs.windows.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
