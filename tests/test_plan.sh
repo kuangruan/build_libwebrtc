@@ -49,10 +49,13 @@ done
 echo "$body_ps" | grep -q 'windows-x86_64' || fail "ps1 missing x64"
 echo "$body_ps" | grep -q 'windows-x86' || fail "ps1 missing x86"
 echo "$body_sh" | grep -q 'gn --root="$SRC"' || fail "darwin gn must pass --root (Actions cwd has no .gn)"
-echo "$body_ps" | grep -q 'gn --root=$src' || fail "windows gn must pass --root (Actions cwd has no .gn)"
+echo "$body_ps" | grep -q 'Ensure-Gn' || fail "windows must find real gn.exe (depot_tools wrapper is not enough)"
+echo "$body_ps" | grep -q -- '--root=$src' || fail "windows gn must pass --root (Actions cwd has no .gn)"
+echo "$body_ps" | grep -q 'buildtools\\win\\gn.exe' || fail "windows must look for CIPD gn.exe"
 echo "$body_ps" | grep -q 'core.longpaths' || fail "windows must enable git longpaths"
 echo "$body_ps" | grep -Fq 'C:\w' || fail "windows Actions checkout must be a short path"
 grep -q 'WEBRTC_CHECKOUT' "$WF" || fail "workflow must set a short Windows checkout"
+grep -q 'gh release create' "$WF" || fail "workflow must publish successful slices to Releases"
 
 for t in darwin-arm64 darwin-x86_64 windows-x86_64 windows-x86; do
   grep -q "$t" "$WF" || fail "workflow missing $t"

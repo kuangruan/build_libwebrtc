@@ -176,8 +176,40 @@ if (-not (Test-Path (Join-Path $src ".gn"))) {
     throw "missing $src\.gn (gclient sync incomplete)"
 }
 $argsFlat = ((Get-Content (Join-Path $destOut "args.gn")) -join " ")
+# depot_tools' gn is a wrapper; gn.py requires a second real gn.exe on PATH
+# (CIPD binary under src\buildtools\win).
+function Ensure-Gn {
+    $cands = @(
+        (Join-Path $src "buildtools\win\gn.exe"),
+        (Join-Path $src "buildtools\win\gn"),
+        (Join-Path $src "third_party\gn\gn.exe"),
+        (Join-Path $src "third_party\depot_tools\gn.exe")
+    )
+    $bin = $null
+    foreach ($c in $cands) {
+        if (Test-Path $c) { $bin = (Resolve-Path $c).Path; break }
+    }
+    if (-not $bin) {
+        $hit = Get-ChildItem -Path @(
+            (Join-Path $src "buildtools"),
+            (Join-Path $src "third_party")
+        ) -Recurse -Filter "gn.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '\\depot_tools\\gn.exe$' } |
+            Select-Object -First 1
+        if ($hit) { $bin = $hit.FullName }
+    }
+    if (-not $bin) {
+        throw "real gn.exe not found (depot_tools wrapper alone is not enough)"
+    }
+    $env:PATH = "$(Split-Path -Parent $bin);$depot;$env:PATH"
+    Write-Output "using gn $bin"
+    & $bin --version
+    return $bin
+}
+$gnBin = Ensure-Gn
 # Real gn walks cwd for .gn. Actions cwd is this repo, not the WebRTC tree.
-gn --root=$src gen $gnOut --args=$argsFlat
+& $gnBin --root=$src gen $gnOut --args=$argsFlat
+if ($LASTEXITCODE -ne 0) { throw "gn gen failed" }
 if ($env:NINJA_JOBS) { ninja -C $gnOut -j $env:NINJA_JOBS webrtc } else { ninja -C $gnOut webrtc }
 
 $lib = $null
