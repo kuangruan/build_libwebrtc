@@ -205,11 +205,17 @@ function Ensure-Gn {
         throw "real gn.exe not found (depot_tools wrapper alone is not enough)"
     }
     $env:PATH = "$(Split-Path -Parent $bin);$depot;$env:PATH"
-    Write-Output "using gn $bin"
-    & $bin --version
+    # Write-Host / Out-Host: Write-Output and native stdout become the
+    # function return value, so `$gnBin = Ensure-Gn` would be
+    # "using gn C:\w\...\gn.exe 2265 (...) C:\w\...\gn.exe".
+    Write-Host "using gn $bin"
+    & $bin --version | Out-Host
     return $bin
 }
-$gnBin = Ensure-Gn
+$gnBin = Ensure-Gn | Select-Object -Last 1
+if (-not (Test-Path -LiteralPath $gnBin)) {
+    throw "Ensure-Gn did not return gn.exe: $gnBin"
+}
 # Real gn walks cwd for .gn. Actions cwd is this repo, not the WebRTC tree.
 # Quote --args so PowerShell does not split target_os="win".
 & $gnBin --root=$src gen $gnOut "--args=$argsFlat"

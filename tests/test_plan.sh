@@ -89,6 +89,12 @@ if ! echo "$fat_info" | grep -Eiq 'Architectures in the fat file'; then
   fail "fat lipo -info must still be rejected"
 fi
 echo "$body_ps" | grep -q 'Ensure-Gn' || fail "windows must find real gn.exe (depot_tools wrapper is not enough)"
+if echo "$body_ps" | grep -q 'Write-Output "using gn'; then
+  fail "Ensure-Gn Write-Output pollutes \$gnBin (PowerShell captures all pipeline output)"
+fi
+echo "$body_ps" | grep -q 'Write-Host "using gn' || fail "Ensure-Gn must Write-Host the real gn.exe"
+echo "$body_ps" | grep -q 'Out-Host' || fail "Ensure-Gn must not leave gn --version on the success pipeline"
+echo "$body_ps" | grep -q 'Select-Object -Last 1' || fail "windows must take last Ensure-Gn output as gn.exe"
 echo "$body_ps" | grep -q -- '--root=$src' || fail "windows gn must pass --root (Actions cwd has no .gn)"
 echo "$body_ps" | grep -q -- '--flatten' || fail "windows must flatten args.gn"
 echo "$body_ps" | grep -q '"--args=$argsFlat"' || fail "windows must quote gn --args"
