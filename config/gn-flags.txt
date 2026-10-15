@@ -7,6 +7,11 @@ rtc_build_examples=false
 rtc_build_tools=false
 rtc_use_h264=false
 proprietary_codecs=false
+# What exports webrtc::AudioDeviceModule::Create: a standalone PeerConnection
+# cannot be built without it, because CreatePeerConnectionFactory dereferences
+# the audio device it is handed and there is no other way to construct one
+# (tebox pins the evidence in docs/streaming.md). No codecs, no Chromium ffmpeg.
+rtc_include_internal_audio_device=true
 use_custom_libcxx=false
 use_rtti=true
 treat_warnings_as_errors=false
