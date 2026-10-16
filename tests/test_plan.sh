@@ -177,6 +177,8 @@ grep -qE '^\s+- linux-arm64$' "$WF" || fail "workflow dispatch must offer linux-
 # linux-arm64 asset and only failed at a consumer's linker, which is far too late
 # to be the first time anyone looks.
 grep -q 'name: verify' "$WF" || fail "workflow must verify a slice before packing it"
+grep -q 'packed members:' "$WF" ||
+  fail "workflow must verify the packed tarball: the directory and the tar differed once"
 grep -q 'refusing to publish it' "$WF" || fail "linux verify must refuse a non-ELF archive"
 grep -q 'ELF 64-bit.\*aarch64' "$WF" || fail "linux verify must check every member's architecture"
 grep -q 'lipo -info' "$WF" || fail "darwin verify must check the archive with lipo"
