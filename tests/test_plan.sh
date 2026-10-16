@@ -126,6 +126,10 @@ echo "$body_lsh" | grep -q 'use_sysroot=true' || fail "linux cross path must add
 echo "$body_lsh" | grep -q 'install-sysroot.py" --arch=arm64' ||
   fail "linux cross path must fetch the arm64 sysroot (gn asserts without it)"
 echo "$body_lsh" | grep -q 'aarch64' || fail "linux must check the archive is aarch64, not just that it built"
+echo "$body_lsh" | grep -q 'all \$total members are' ||
+  fail "linux must walk every archive member: sampling one lets a mixed slice ship"
+echo "$body_lsh" | grep -q 'arguments changed for' ||
+  fail "linux must wipe a build directory whose arguments changed (stale objects)"
 echo "$body_lsh" | grep -q 'file "$OBJ_PROBE/probe.o"' || fail "linux must arch-check a real member with file(1)"
 if echo "$body_lsh" | grep -qE '(^|[^[:alnum:]_])lipo[[:space:]]+-info'; then
   fail "linux has no lipo; the arch check must be file/ar based"

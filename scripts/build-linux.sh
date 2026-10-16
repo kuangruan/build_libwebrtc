@@ -269,6 +269,13 @@ if [[ -n "$SYSROOT_ARGS" ]]; then
 fi
 
 GN_OUT="$SRC/out/$TRIPLE"
+# A build directory remembers the architecture it was configured for, and reusing
+# one across a target_cpu change is how objects from two architectures end up in
+# one archive. Wipe it when the arguments differ from what is being asked now.
+if [[ -f "$GN_OUT/args.gn" ]] && ! diff -q "$DEST/args.gn" "$GN_OUT/args.gn" >/dev/null 2>&1; then
+  echo "==> arguments changed for $TRIPLE; wiping $GN_OUT"
+  rm -rf "$GN_OUT"
+fi
 mkdir -p "$GN_OUT"
 cp "$DEST/args.gn" "$GN_OUT/args.gn"
 if [[ -n "$SYSROOT_ARGS" ]]; then
@@ -337,18 +344,34 @@ ar r "$DEST/lib/libwebrtc.a" "$FT"
 # perfectly well on arm64, it just dies at runtime).
 OBJ_PROBE="$(mktemp -d)"
 trap 'rm -rf "$OBJ_PROBE"' EXIT
-MEMBER="$(ar t "$DEST/lib/libwebrtc.a" | head -n 1)"
-if [[ -z "$MEMBER" ]]; then
-  echo "error: $DEST/lib/libwebrtc.a has no members" >&2
+# Every member, not one sampled one. A slice that mixed architectures was
+# published once and only failed at a consumer's link, because the single sampled
+# member happened to be right -- and on a host whose ar lists GNU long names by
+# offset, the sample was not even a real member. One wrong object makes the whole
+# slice unlinkable, so the check walks all of them.
+bad=0
+total=0
+while IFS= read -r member; do
+  if [[ -z "$member" || "$member" == "/" ]]; then
+    continue
+  fi
+  total=$((total + 1))
+  if ! ar p "$DEST/lib/libwebrtc.a" "$member" >"$OBJ_PROBE/probe.o" 2>/dev/null; then
+    continue
+  fi
+  ELF="$(file "$OBJ_PROBE/probe.o")"
+  if ! echo "$ELF" | grep -Eq "ELF 64-bit.*$EXPECT_FILE"; then
+    echo "error: member $member is not $EXPECT_FILE ($ELF)" >&2
+    bad=$((bad + 1))
+    [[ $bad -gt 3 ]] && break
+  fi
+done < <(ar t "$DEST/lib/libwebrtc.a")
+if [[ $bad -gt 0 ]]; then
+  echo "error: $DEST/lib/libwebrtc.a has members that are not $EXPECT_FILE" >&2
   exit 1
 fi
-ar p "$DEST/lib/libwebrtc.a" "$MEMBER" >"$OBJ_PROBE/probe.o"
-ELF="$(file "$OBJ_PROBE/probe.o")"
-echo "elf $ELF"
-if ! echo "$ELF" | grep -Eq "ELF 64-bit.*$EXPECT_FILE"; then
-  echo "error: $DEST/lib/libwebrtc.a is not $EXPECT_FILE ($ELF)" >&2
-  exit 1
-fi
+echo "elf ok: all $total members are $EXPECT_FILE"
+
 rsync -a --prune-empty-dirs \
   --exclude='out/' --exclude='.git/' \
   --include='*/' --include='*.h' --include='*.hpp' --include='*.inc' --exclude='*' \
