@@ -34,6 +34,28 @@ jobs:
         env:
           NINJA_JOBS: "4"
         run: ./scripts/build-darwin.sh --triple ${{ matrix.triple }}
+      - name: verify
+        if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
+        run: |
+          set -euo pipefail
+          ROOT="${LIBWEBRTC_ROOT:-$HOME/.cache/build_libwebrtc}"
+          SLICE="$ROOT/m140-7339/${{ matrix.triple }}"
+          echo "--- args.gn ---"; cat "$SLICE/args.gn"
+          grep -q 'target_os="mac"' "$SLICE/args.gn" || { echo "not a mac slice"; exit 1; }
+          case "${{ matrix.triple }}" in
+            darwin-arm64) want=arm64 ;;
+            darwin-x86_64) want=x86_64 ;;
+          esac
+          grep -q "target_cpu=\"$want\"" "$SLICE/args.gn" || { echo "not target_cpu=$want"; exit 1; }
+          # Before anything is published: the archive has to be this triple's
+          # architecture. A Mach-O archive shipped once under a linux-arm64 asset
+          # and only failed at a consumer's linker, which is far too late.
+          file "$SLICE/lib/libwebrtc.a"
+          lipo -info "$SLICE/lib/libwebrtc.a" | tee /tmp/lipo.txt
+          grep -q "$want" /tmp/lipo.txt || { echo "${{ matrix.triple }} archive is not $want"; exit 1; }
+          if grep -qiE 'Architectures in the fat file' /tmp/lipo.txt; then
+            echo "the archive must be thin, not universal"; exit 1
+          fi
       - name: pack
         if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
         run: |
@@ -101,6 +123,27 @@ jobs:
         env:
           NINJA_JOBS: "4"
         run: ./scripts/build-linux.sh --triple ${{ matrix.triple }}
+      - name: verify
+        if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
+        run: |
+          set -euo pipefail
+          ROOT="${LIBWEBRTC_ROOT:-$HOME/.cache/build_libwebrtc}"
+          SLICE="$ROOT/m140-7339/${{ matrix.triple }}"
+          echo "--- args.gn ---"; cat "$SLICE/args.gn"
+          grep -q 'target_os="linux"' "$SLICE/args.gn" || { echo "not a linux slice"; exit 1; }
+          grep -q 'target_cpu="arm64"' "$SLICE/args.gn" || { echo "not target_cpu=arm64"; exit 1; }
+          # Every member, because the failure this guards against shipped: a
+          # Mach-O archive under a linux-arm64 asset, which no consumer could
+          # link and which cost far more to find than to prevent. Mach-O extracts
+          # with ar just as happily, so the check is on what comes out.
+          rm -rf /tmp/members && mkdir -p /tmp/members && cd /tmp/members
+          ar x "$SLICE/lib/libwebrtc.a"
+          total="$(ls | wc -l)"
+          bad="$(file * | grep -cv 'ELF 64-bit.*aarch64' || true)"
+          echo "members: $total, not ELF/aarch64: $bad"
+          file * | grep -v 'ELF 64-bit.*aarch64' | head -5
+          [ "$total" -gt 100 ] || { echo "suspiciously few members: $total"; exit 1; }
+          [ "$bad" = 0 ] || { echo "this slice is not ELF aarch64; refusing to publish it"; exit 1; }
       - name: pack
         if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
         run: |

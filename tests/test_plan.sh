@@ -173,6 +173,13 @@ if grep -q 'ubuntu-24.04-arm' "$WF"; then
   fail "workflow must not use the arm64 runner: its cipd clang is x86_64"
 fi
 grep -qE '^\s+- linux-arm64$' "$WF" || fail "workflow dispatch must offer linux-arm64"
+# Nothing gets published unverified: a Mach-O archive shipped once under a
+# linux-arm64 asset and only failed at a consumer's linker, which is far too late
+# to be the first time anyone looks.
+grep -q 'name: verify' "$WF" || fail "workflow must verify a slice before packing it"
+echo "$WF" | grep -q 'refusing to publish it' || fail "linux verify must refuse a non-ELF archive"
+echo "$WF" | grep -q 'ELF 64-bit.\*aarch64' || fail "linux verify must check every member's architecture"
+echo "$WF" | grep -q 'lipo -info' || fail "darwin verify must check the archive with lipo"
 if ! awk '/^  release:/{r=1} r && /needs:/{print; exit}' "$WF" | grep -q 'linux'; then
   fail "workflow release must depend on the linux job"
 fi
