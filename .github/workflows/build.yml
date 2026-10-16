@@ -86,11 +86,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Arm64 hosted runners: native build, no sysroot cross-compile. The
-          # script also cross-builds from x86_64 (--cross), which is the
-          # fallback if this label ever stops resolving.
+          # x86_64 runner, cross-compiled -- not the arm64 runner. The clang
+          # cipd ships for linux is x86_64 even under the linux-arm64 platform
+          # name, so a native arm64 build dies on the first object with
+          # "clang++: Exec format error". Cross-compiling with Chromium's own
+          # clang (--target=aarch64-linux-gnu plus its arm64 sysroot) is the
+          # supported way, and build-linux.sh adds use_sysroot for it.
           - triple: linux-arm64
-            os: ubuntu-24.04-arm
+            os: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: build

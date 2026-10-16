@@ -158,9 +158,14 @@ grep -q 'macos-15-intel' "$WF" || fail "workflow must run darwin-x86_64 on Intel
 if awk '/darwin:/{d=1} d && /runs-on: macos-15$/{bad=1} d && /windows:/{d=0} END{exit !bad}' "$WF"; then
   fail "workflow must not run every Darwin triple on macos-15"
 fi
-# linux-arm64 is native on an arm64 runner (the script can cross-build, but the
-# workflow should not pay for that), and its slice has to reach the release.
-grep -q 'ubuntu-24.04-arm' "$WF" || fail "workflow must build linux-arm64 on an arm64 runner"
+# linux-arm64 is cross-compiled on an x86_64 runner: the clang cipd ships for
+# linux is x86_64 (a native arm64 build fails with "Exec format error"), and its
+# arm64 sysroot is what --target=aarch64-linux-gnu needs. Its slice still has to
+# reach the release.
+grep -q 'os: ubuntu-24.04$' "$WF" || fail "workflow must build linux-arm64 on an x86_64 runner"
+if grep -q 'ubuntu-24.04-arm' "$WF"; then
+  fail "workflow must not use the arm64 runner: its cipd clang is x86_64"
+fi
 grep -qE '^\s+- linux-arm64$' "$WF" || fail "workflow dispatch must offer linux-arm64"
 if ! awk '/^  release:/{r=1} r && /needs:/{print; exit}' "$WF" | grep -q 'linux'; then
   fail "workflow release must depend on the linux job"
