@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY="$ROOT/scripts/render_args.py"
 SH="$ROOT/scripts/build-darwin.sh"
+LSH="$ROOT/scripts/build-linux.sh"
 PS1="$ROOT/scripts/build-windows.ps1"
 WF="$ROOT/.github/workflows/build.yml"
 TMP="$(mktemp -d)"
@@ -11,7 +12,7 @@ trap 'rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 list="$(python3 "$PY" --list | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-[[ "$list" == "darwin-arm64 darwin-x86_64 windows-x86_64 windows-x86" ]] || fail "triples: $list"
+[[ "$list" == "darwin-arm64 darwin-x86_64 linux-arm64 windows-x86_64 windows-x86" ]] || fail "triples: $list"
 
 dest="$TMP/darwin-arm64"
 python3 "$PY" --triple darwin-arm64 --dest "$dest" --script sh --dry-run >/dev/null
@@ -22,9 +23,30 @@ grep -q 'target_cpu="arm64"' "$dest/args.gn" || fail "missing arm64"
 if grep -q 'rtc_use_h264=true' "$dest/args.gn"; then fail "h264 true leaked"; fi
 
 if python3 "$PY" --triple linux-x86_64 --dest "$TMP/bad" --script sh --dry-run 2>"$TMP/err"; then
-  fail "linux should be rejected"
+  fail "linux-x86_64 is not a triple we build"
 fi
 grep -q 'unknown triple' "$TMP/err" || fail "unknown triple message"
+
+# linux-arm64 renders through the same sh path as darwin (it is a POSIX host).
+linux_dest="$TMP/linux-arm64"
+python3 "$PY" --triple linux-arm64 --dest "$linux_dest" --script sh --dry-run >/dev/null
+grep -q 'target_os="linux"' "$linux_dest/args.gn" || fail "missing target_os linux"
+grep -q 'target_cpu="arm64"' "$linux_dest/args.gn" || fail "linux-arm64 cpu"
+grep -q 'rtc_use_h264=false' "$linux_dest/args.gn" || fail "linux missing h264=false"
+linux_flat="$(python3 "$PY" --flatten "$linux_dest/args.gn")"
+echo "$linux_flat" | grep -q 'target_cpu="arm64"' || fail "flatten dropped linux arm64"
+
+bash "$LSH" --dry-run --triple linux-arm64 --dest "$TMP/lin-slice" >/dev/null
+grep -q 'target_os="linux"' "$TMP/lin-slice/args.gn" || fail "build-linux dry-run missing target_os"
+# The default triple is the one it exists for.
+bash "$LSH" --dry-run --dest "$TMP/lin-default" >/dev/null
+grep -q 'target_cpu="arm64"' "$TMP/lin-default/args.gn" || fail "build-linux default triple"
+for other in darwin-arm64 windows-x86_64; do
+  if bash "$LSH" --dry-run --triple "$other" --dest "$TMP/wrong" >/dev/null 2>"$TMP/lserr"; then
+    fail "build-linux must refuse $other"
+  fi
+  grep -q 'only builds linux-arm64' "$TMP/lserr" || fail "build-linux refusal message for $other"
+done
 
 if python3 "$PY" --triple windows-x86_64 --dest "$TMP/win" --script sh --dry-run 2>"$TMP/err2"; then
   fail "windows via sh should be rejected"
@@ -61,8 +83,9 @@ if bash "$SH" --dry-run --triple windows-x86_64 --dest "$TMP/nope" >/dev/null 2>
 fi
 
 body_sh="$(cat "$SH")"
+body_lsh="$(cat "$LSH")"
 body_ps="$(cat "$PS1")"
-for body in "$body_sh" "$body_ps"; do
+for body in "$body_sh" "$body_lsh" "$body_ps"; do
   echo "$body" | grep -q 'fetch --nohooks --no-history webrtc' || fail "missing no-history fetch"
   echo "$body" | grep -q 'gclient sync -D' || fail "missing gclient sync -D"
   echo "$body" | grep -q -- '--no-history' || fail "missing no-history sync"
@@ -78,6 +101,25 @@ echo "$body_sh" | grep -q 'macos-15-intel' || fail "darwin-x86_64 must refuse Ap
 echo "$body_sh" | grep -q 'api:field_trials' || fail "darwin must ninja api:field_trials (FieldTrials::Create)"
 echo "$body_sh" | grep -q 'FieldTrials::Create' || fail "darwin must nm-check FieldTrials::Create"
 echo "$body_ps" | grep -q 'api:field_trials' || fail "windows must ninja api:field_trials"
+
+# linux-arm64: the same contract as darwin (POSIX host, same flatten/parse rules),
+# plus the two things only this slice has: the type of the host it runs on, and an
+# arch check that is not lipo.
+echo "$body_lsh" | grep -q 'gn --root="$SRC"' || fail "linux gn must pass --root (Actions cwd has no .gn)"
+echo "$body_lsh" | grep -q -- '--flatten' || fail "linux must flatten args.gn (leading # swallows target_cpu)"
+echo "$body_lsh" | grep -q -- '--parse-gn-value' || fail "linux must parse gn --short quoted value"
+echo "$body_lsh" | grep -q "tr -d ' \\\"'" && fail "linux must not tr-strip gn --short (leaves target_cpu=arm64)"
+echo "$body_lsh" | grep -q 'api:field_trials' || fail "linux must ninja api:field_trials"
+echo "$body_lsh" | grep -q 'FieldTrials::Create' || fail "linux must nm-check FieldTrials::Create"
+echo "$body_lsh" | grep -q 'linux64/gn' || fail "linux must find the CIPD gn under buildtools/linux64"
+echo "$body_lsh" | grep -q 'uname -s' || fail "linux must refuse non-Linux hosts"
+echo "$body_lsh" | grep -q 'use_sysroot=true' || fail "linux cross path must add use_sysroot (x86_64 host)"
+echo "$body_lsh" | grep -q 'aarch64' || fail "linux must check the archive is aarch64, not just that it built"
+echo "$body_lsh" | grep -q 'file "$OBJ_PROBE/probe.o"' || fail "linux must arch-check a real member with file(1)"
+if echo "$body_lsh" | grep -qE '(^|[^[:alnum:]_])lipo[[:space:]]+-info'; then
+  fail "linux has no lipo; the arch check must be file/ar based"
+fi
+echo "$body_lsh" | grep -q 'only builds linux-arm64' || fail "linux must refuse the other triples"
 echo "$body_sh" | grep -q 'lipo -info' || fail "darwin must lipo-check the archive arch"
 echo "$body_sh" | grep -q 'Architectures in the fat file' || fail "darwin fat check must not match Non-fat file"
 thin_info='Non-fat file: /Users/runner/.cache/build_libwebrtc/m140-7339/darwin-arm64/lib/libwebrtc.a is architecture: arm64'
@@ -107,8 +149,18 @@ grep -q 'macos-15-intel' "$WF" || fail "workflow must run darwin-x86_64 on Intel
 if awk '/darwin:/{d=1} d && /runs-on: macos-15$/{bad=1} d && /windows:/{d=0} END{exit !bad}' "$WF"; then
   fail "workflow must not run every Darwin triple on macos-15"
 fi
+# linux-arm64 is native on an arm64 runner (the script can cross-build, but the
+# workflow should not pay for that), and its slice has to reach the release.
+grep -q 'ubuntu-24.04-arm' "$WF" || fail "workflow must build linux-arm64 on an arm64 runner"
+grep -qE '^\s+- linux-arm64$' "$WF" || fail "workflow dispatch must offer linux-arm64"
+if ! awk '/^  release:/{r=1} r && /needs:/{print; exit}' "$WF" | grep -q 'linux'; then
+  fail "workflow release must depend on the linux job"
+fi
+if ! awk '/^  release:/{r=1} r && /needs\.linux\.result/{found=1} END{exit !found}' "$WF"; then
+  fail "release notes must say when the linux jobs failed"
+fi
 
-for t in darwin-arm64 darwin-x86_64 windows-x86_64 windows-x86; do
+for t in darwin-arm64 darwin-x86_64 linux-arm64 windows-x86_64 windows-x86; do
   grep -q "$t" "$WF" || fail "workflow missing $t"
 done
 

@@ -161,11 +161,15 @@ def main() -> int:
         return 1
 
     triple = triples[args.triple]
-    if args.script == "sh" and triple["host_os"] != "darwin":
+    if args.script == "sh" and triple["host_os"] not in ("darwin", "linux"):
         print(f"error: {args.triple} must be built with scripts/build-windows.ps1", file=sys.stderr)
         return 1
     if args.script == "ps1" and triple["host_os"] != "windows":
-        print(f"error: {args.triple} must be built with scripts/build-darwin.sh", file=sys.stderr)
+        print(
+            f"error: {args.triple} must be built on a POSIX host "
+            "(scripts/build-darwin.sh or scripts/build-linux.sh)",
+            file=sys.stderr,
+        )
         return 1
 
     dest = Path(args.dest)

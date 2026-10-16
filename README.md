@@ -10,10 +10,14 @@ Actions artifacts, never into git.
 |--------|--------|--------|
 | `darwin-arm64` | macOS | `libwebrtc.a` |
 | `darwin-x86_64` | macOS | `libwebrtc.a` |
+| `linux-arm64` | Linux arm64 | `libwebrtc.a` |
 | `windows-x86_64` | Windows | `webrtc.lib` |
 | `windows-x86` | Windows | `webrtc.lib` |
 
 Frozen GN includes `rtc_use_h264=false` and `proprietary_codecs=false`.
+`linux-arm64` is built natively on the arm64 runner; `scripts/build-linux.sh
+--cross` also builds it from an x86_64 Linux host by adding `use_sysroot=true`
+(that appends to the generated args, it is not part of the frozen set).
 
 ## Local
 
@@ -21,6 +25,10 @@ Frozen GN includes `rtc_use_h264=false` and `proprietary_codecs=false`.
 # macOS
 ./scripts/build-darwin.sh --dry-run --triple darwin-arm64
 ./scripts/build-darwin.sh --triple darwin-arm64
+
+# Linux (arm64 natively, or any host with --cross)
+./scripts/build-linux.sh --dry-run --triple linux-arm64
+./scripts/build-linux.sh --triple linux-arm64
 
 # Windows (Developer PowerShell)
 .\scripts\build-windows.ps1 -DryRun -Triple windows-x86_64
