@@ -85,12 +85,21 @@ fi
 body_sh="$(cat "$SH")"
 body_lsh="$(cat "$LSH")"
 body_ps="$(cat "$PS1")"
-for body in "$body_sh" "$body_lsh" "$body_ps"; do
+for body in "$body_sh" "$body_ps"; do
   echo "$body" | grep -q 'fetch --nohooks --no-history webrtc' || fail "missing no-history fetch"
   echo "$body" | grep -q 'gclient sync -D' || fail "missing gclient sync -D"
   echo "$body" | grep -q -- '--no-history' || fail "missing no-history sync"
   echo "$body" | grep -q 'fetch --depth=1' || fail "missing depth=1"
 done
+# linux builds its own checkout (no `fetch`) so it can drop the one cipd entry
+# that has no arm64 package; the same contract applies, differently spelled.
+echo "$body_lsh" | grep -q 'gclient sync -D --no-history' || fail "linux missing gclient sync -D --no-history"
+echo "$body_lsh" | grep -q 'fetch --depth=1' || fail "linux missing depth=1 fetch"
+if echo "$body_lsh" | grep -q 'fetch --nohooks --no-history webrtc'; then
+  fail "linux must not use fetch: it syncs before the jdk entry can be dropped"
+fi
+echo "$body_lsh" | grep -q '"src/third_party/jdk": None' || fail "linux must drop the linux-arm64-less jdk cipd package"
+echo "$body_lsh" | grep -q 'custom_deps' || fail "linux must drop it through custom_deps"
 echo "$body_ps" | grep -q 'windows-x86_64' || fail "ps1 missing x64"
 echo "$body_ps" | grep -q 'windows-x86' || fail "ps1 missing x86"
 echo "$body_sh" | grep -q 'gn --root="$SRC"' || fail "darwin gn must pass --root (Actions cwd has no .gn)"
