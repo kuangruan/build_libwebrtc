@@ -141,7 +141,9 @@ jobs:
           total="$(ls | wc -l)"
           bad="$(file * | grep -cv 'ELF 64-bit.*aarch64' || true)"
           echo "members: $total, not ELF/aarch64: $bad"
-          file * | grep -v 'ELF 64-bit.*aarch64' | head -5
+          # || true: finding nothing is the success case, and grep -v exiting 1
+          # would take the whole step down with it under set -e and pipefail.
+          file * | grep -v 'ELF 64-bit.*aarch64' | head -5 || true
           [ "$total" -gt 100 ] || { echo "suspiciously few members: $total"; exit 1; }
           [ "$bad" = 0 ] || { echo "this slice is not ELF aarch64; refusing to publish it"; exit 1; }
       - name: pack
