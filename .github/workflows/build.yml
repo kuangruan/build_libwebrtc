@@ -118,6 +118,19 @@ jobs:
             os: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # The compile is the expensive part (3700 objects, 15-30 minutes), and the
+      # runner is a fresh machine every time. Caching the ninja build directory
+      # makes a rebuild incremental: keyed on the frozen GN flags and the triple,
+      # so a changed flag makes a new key, and restore-keys still hands an older
+      # tree to ninja, which rebuilds exactly what differs. The verify and pack
+      # steps are what make this safe to do at all -- a stale object that is the
+      # wrong architecture or a duplicate member is caught before publishing.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/build_libwebrtc/checkout/src/out/${{ matrix.triple }}
+          key: webrtc-out-${{ matrix.triple }}-${{ hashFiles('config/gn-flags.txt', 'config/triples.txt', 'config/milestone.env') }}
+          restore-keys: |
+            webrtc-out-${{ matrix.triple }}-
       - name: build
         if: ${{ inputs.triple == 'all' || inputs.triple == matrix.triple }}
         env:
