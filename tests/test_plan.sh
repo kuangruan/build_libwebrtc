@@ -177,9 +177,9 @@ grep -qE '^\s+- linux-arm64$' "$WF" || fail "workflow dispatch must offer linux-
 # linux-arm64 asset and only failed at a consumer's linker, which is far too late
 # to be the first time anyone looks.
 grep -q 'name: verify' "$WF" || fail "workflow must verify a slice before packing it"
-echo "$WF" | grep -q 'refusing to publish it' || fail "linux verify must refuse a non-ELF archive"
-echo "$WF" | grep -q 'ELF 64-bit.\*aarch64' || fail "linux verify must check every member's architecture"
-echo "$WF" | grep -q 'lipo -info' || fail "darwin verify must check the archive with lipo"
+grep -q 'refusing to publish it' "$WF" || fail "linux verify must refuse a non-ELF archive"
+grep -q 'ELF 64-bit.\*aarch64' "$WF" || fail "linux verify must check every member's architecture"
+grep -q 'lipo -info' "$WF" || fail "darwin verify must check the archive with lipo"
 if ! awk '/^  release:/{r=1} r && /needs:/{print; exit}' "$WF" | grep -q 'linux'; then
   fail "workflow release must depend on the linux job"
 fi
