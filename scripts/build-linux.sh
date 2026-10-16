@@ -259,6 +259,15 @@ ensure_gn() {
 
 ensure_gn
 
+if [[ -n "$SYSROOT_ARGS" ]]; then
+  # gclient's hook fetches only the *host's* sysroot, so a cross build starts
+  # without the target's and gn stops at its own assertion:
+  #   Missing sysroot (//build/linux/debian_bullseye_arm64-sysroot).
+  #   To fix, run: build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
+  # That script is what this is, and it is idempotent when the sysroot is there.
+  retry python3 "$SRC/build/linux/sysroot_scripts/install-sysroot.py" --arch=arm64
+fi
+
 GN_OUT="$SRC/out/$TRIPLE"
 mkdir -p "$GN_OUT"
 cp "$DEST/args.gn" "$GN_OUT/args.gn"

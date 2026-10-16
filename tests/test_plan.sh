@@ -123,6 +123,8 @@ echo "$body_lsh" | grep -q 'FieldTrials::Create' || fail "linux must nm-check Fi
 echo "$body_lsh" | grep -q 'linux64/gn' || fail "linux must find the CIPD gn under buildtools/linux64"
 echo "$body_lsh" | grep -q 'uname -s' || fail "linux must refuse non-Linux hosts"
 echo "$body_lsh" | grep -q 'use_sysroot=true' || fail "linux cross path must add use_sysroot (x86_64 host)"
+echo "$body_lsh" | grep -q 'install-sysroot.py" --arch=arm64' ||
+  fail "linux cross path must fetch the arm64 sysroot (gn asserts without it)"
 echo "$body_lsh" | grep -q 'aarch64' || fail "linux must check the archive is aarch64, not just that it built"
 echo "$body_lsh" | grep -q 'file "$OBJ_PROBE/probe.o"' || fail "linux must arch-check a real member with file(1)"
 if echo "$body_lsh" | grep -qE '(^|[^[:alnum:]_])lipo[[:space:]]+-info'; then
