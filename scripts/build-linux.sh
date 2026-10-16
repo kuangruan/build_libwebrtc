@@ -337,8 +337,17 @@ if [[ -z "$FT" ]]; then
 fi
 mkdir -p "$DEST/lib" "$DEST/include"
 cp "$LIB" "$DEST/lib/libwebrtc.a"
+# Duplicates, counted before and after this script touches the archive. An
+# archive with two members of the same name is a mixed archive, and everything
+# that extracts by name sees only one of them -- which is how a linux-arm64
+# asset shipped with darwin objects in it while two checks reported ELF. If the
+# count is already non-zero here, it came out of ninja; if it appears after the
+# ar below, it is this line.
+dup_count() { ar t "$1" 2>/dev/null | grep -vE '^/' | sort | uniq -d | wc -l | tr -d ' '; }
+echo "duplicate members: $LIB -> $(dup_count "$LIB")"
 # `webrtc` complete_static_lib does not include embedder-only FieldTrials::Create.
 ar r "$DEST/lib/libwebrtc.a" "$FT"
+echo "duplicate members: $DEST/lib/libwebrtc.a -> $(dup_count "$DEST/lib/libwebrtc.a") (after ar r)"
 # No lipo on Linux: take one member out and ask `file` what it is. A slice built
 # for the wrong machine is the failure this catches (an x86_64 archive links
 # perfectly well on arm64, it just dies at runtime).
