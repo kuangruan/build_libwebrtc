@@ -162,7 +162,12 @@ jobs:
           rm -rf /tmp/packed && mkdir -p /tmp/packed
           tar --zstd -xf "libwebrtc-m140-${{ matrix.triple }}.tar.zst" -C /tmp/packed
           ls -la /tmp/packed/lib
-          cd /tmp/packed/lib && ar x libwebrtc.a && cd /tmp/packed/lib
+          # rm the archive after extracting it: ar x leaves it in place, and the
+          # count below would then include it -- "current ar archive" is not an
+          # ELF member, and the first run of this check refused a perfectly good
+          # slice for exactly that reason (2783 members, all ELF aarch64, plus
+          # the archive it came from).
+          cd /tmp/packed/lib && ar x libwebrtc.a && rm -f libwebrtc.a
           total="$(ls | wc -l)"
           bad="$(file * | grep -cv 'ELF 64-bit.*aarch64' || true)"
           echo "packed members: $total, not ELF/aarch64: $bad"
