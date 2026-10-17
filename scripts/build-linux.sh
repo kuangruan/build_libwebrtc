@@ -358,8 +358,7 @@ echo "duplicate members: $DEST/lib/libwebrtc.a -> $(dup_count "$DEST/lib/libwebr
 dups="$(ar t "$DEST/lib/libwebrtc.a" | grep -vE '^/' | sort | uniq -d)"
 bad=0
 if [[ -n "$dups" ]]; then
-  probe="$OBJ_PROBE/dupcheck"
-  mkdir -p "$probe"
+  probe="$(mktemp -d)"
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
     cp "$DEST/lib/libwebrtc.a" "$probe/w.a"
@@ -372,6 +371,7 @@ if [[ -n "$dups" ]]; then
       [[ $bad -gt 3 ]] && break
     fi
   done <<<"$dups"
+  rm -rf "$probe"
 fi
 if [[ $bad -gt 0 ]]; then
   echo "error: $DEST/lib/libwebrtc.a has duplicated members from more than one platform" >&2
