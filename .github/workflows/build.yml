@@ -193,7 +193,6 @@ jobs:
           # wrong architecture, and that is the check below and in the build.
           dups="$(ar t libwebrtc.a | grep -vE '^/' | sort | uniq -d | wc -l)"
           echo "duplicate member names: $dups (normal for GN's complete_static_lib; every copy checked in build)"
-          [ "$dups" = 0 ] || { echo "the archive has $dups duplicated member names; refusing to publish it"; exit 1; }
           ar x libwebrtc.a && rm -f libwebrtc.a
           total="$(ls | wc -l)"
           bad="$(file * | grep -cv 'ELF 64-bit.*aarch64' || true)"
