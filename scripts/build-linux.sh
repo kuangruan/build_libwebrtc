@@ -348,6 +348,35 @@ echo "duplicate members: $LIB -> $(dup_count "$LIB")"
 # `webrtc` complete_static_lib does not include embedder-only FieldTrials::Create.
 ar r "$DEST/lib/libwebrtc.a" "$FT"
 echo "duplicate members: $DEST/lib/libwebrtc.a -> $(dup_count "$DEST/lib/libwebrtc.a") (after ar r)"
+
+# Every copy of every name, not one per name. ar x extracts a single copy for a
+# repeated name and ar p prints a single one, so an archive whose second copy of
+# time_utils.o is a Mach-O object reads as all-ELF to any check built that way --
+# which is precisely what a consumer's linker rejected. With duplicates present
+# (145 of them in the GN output), the second copy of each is checked here: delete
+# the first and read what is left.
+dups="$(ar t "$DEST/lib/libwebrtc.a" | grep -vE '^/' | sort | uniq -d)"
+bad=0
+if [[ -n "$dups" ]]; then
+  probe="$OBJ_PROBE/dupcheck"
+  mkdir -p "$probe"
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    cp "$DEST/lib/libwebrtc.a" "$probe/w.a"
+    ar d "$probe/w.a" "$name" >/dev/null 2>&1 || true
+    ar p "$probe/w.a" "$name" >"$probe/other.o" 2>/dev/null || continue
+    ELF="$(file "$probe/other.o")"
+    if ! echo "$ELF" | grep -Eq "ELF 64-bit.*$EXPECT_FILE"; then
+      echo "error: the second copy of $name is not $EXPECT_FILE ($ELF)" >&2
+      bad=$((bad + 1))
+      [[ $bad -gt 3 ]] && break
+    fi
+  done <<<"$dups"
+fi
+if [[ $bad -gt 0 ]]; then
+  echo "error: $DEST/lib/libwebrtc.a has duplicated members from more than one platform" >&2
+  exit 1
+fi
 # No lipo on Linux: take one member out and ask `file` what it is. A slice built
 # for the wrong machine is the failure this catches (an x86_64 archive links
 # perfectly well on arm64, it just dies at runtime).
